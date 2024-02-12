@@ -27,6 +27,7 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/voxel_grid.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/common/transforms.h>
 
@@ -126,6 +127,7 @@ namespace octomap_server {
         double m_pointcloudMaxY;
         double m_pointcloudMinZ;
         double m_pointcloudMaxZ;
+        double m_voxelLeafSize;
         double m_occupancyMinZ;
         double m_occupancyMaxZ;
         double m_minSizeX;

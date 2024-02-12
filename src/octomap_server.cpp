@@ -8,7 +8,7 @@ namespace octomap_server {
         Node(node_name, options),
         m_octree(NULL),
         m_maxRange(20),
-        m_worldFrameId("/map"),
+        m_worldFrameId("map"),
         m_baseFrameId("base_footprint"),
         m_useHeightMap(true),
         m_useColoredMap(false),
@@ -25,6 +25,7 @@ namespace octomap_server {
         m_pointcloudMaxZ(std::numeric_limits<double>::max()),
         m_occupancyMinZ(-std::numeric_limits<double>::max()),
         m_occupancyMaxZ(std::numeric_limits<double>::max()),
+        m_voxelLeafSize(0.01),
         m_minSizeX(0.0),
         m_minSizeY(0.0),
         m_filterSpeckles(false),
@@ -67,6 +68,9 @@ namespace octomap_server {
             "min_x_size", m_minSizeX);
         m_minSizeY = this->declare_parameter(
             "min_y_size", m_minSizeY);
+
+        m_voxelLeafSize = this->declare_parameter(
+            "voxel_leaf_size", m_voxelLeafSize);
 
         m_filterSpeckles = this->declare_parameter(
             "filter_speckles", m_filterSpeckles);
@@ -284,20 +288,16 @@ namespace octomap_server {
         //
         PCLPointCloud pc; // input cloud for filtering and ground-detection
         pcl::fromROSMsg(*cloud, pc);
+
+        // temporary fix to match current rosbag
+        auto fixed_frame = cloud->header.frame_id;
+        fixed_frame.erase(0, 1);
         
         Eigen::Matrix4f sensorToWorld;
         geometry_msgs::msg::TransformStamped sensorToWorldTf;
         try {
-            if (!this->buffer_->canTransform(
-                    m_worldFrameId, cloud->header.frame_id,
-                    cloud->header.stamp)) {
-                throw "Failed";
-            }
-            
-            // RCLCPP_INFO(this->get_logger(), "Can transform");
-
             sensorToWorldTf = this->buffer_->lookupTransform(
-                m_worldFrameId, cloud->header.frame_id,
+                m_worldFrameId, fixed_frame,
                 cloud->header.stamp);
             sensorToWorld = pcl_ros::transformAsMatrix(sensorToWorldTf);
         } catch (tf2::TransformException &ex) {
@@ -306,77 +306,33 @@ namespace octomap_server {
         }
 
         // set up filter for height range, also removes NANs:
-        pcl::PassThrough<PCLPoint> pass_x;
-        pass_x.setFilterFieldName("x");
-        pass_x.setFilterLimits(m_pointcloudMinX, m_pointcloudMaxX);
-        pcl::PassThrough<PCLPoint> pass_y;
-        pass_y.setFilterFieldName("y");
-        pass_y.setFilterLimits(m_pointcloudMinY, m_pointcloudMaxY);
-        pcl::PassThrough<PCLPoint> pass_z;
-        pass_z.setFilterFieldName("z");
-        pass_z.setFilterLimits(m_pointcloudMinZ, m_pointcloudMaxZ);
+        pcl::PassThrough<PCLPoint> pass;
+        pass.setFilterFieldName("x");
+        pass.setFilterLimits(m_pointcloudMinX, m_pointcloudMaxX);
+        pass.setFilterFieldName("y");
+        pass.setFilterLimits(m_pointcloudMinY, m_pointcloudMaxY);
+        pass.setFilterFieldName("z");
+        pass.setFilterLimits(m_pointcloudMinZ, m_pointcloudMaxZ);
 
         PCLPointCloud pc_ground; // segmented ground plane
         PCLPointCloud pc_nonground; // everything else
         
-        if (m_filterGroundPlane) {
-            geometry_msgs::msg::TransformStamped baseToWorldTf;
-            geometry_msgs::msg::TransformStamped sensorToBaseTf;
-            
-            try {
-                if (!this->buffer_->canTransform(
-                    m_baseFrameId, cloud->header.frame_id,
-                    cloud->header.stamp)) {
-                    throw "Failed";
-                }
+        // just filter height range:
+        pass.setInputCloud(pc.makeShared());
+        pass.filter(pc);
+        
+        // directly transform to map frame:
+        pcl::transformPointCloud(pc, pc, sensorToWorld);
 
-                sensorToBaseTf = this->buffer_->lookupTransform(
-                    m_baseFrameId, cloud->header.frame_id,
-                    cloud->header.stamp);
-                baseToWorldTf = this->buffer_->lookupTransform(
-                    m_worldFrameId, m_baseFrameId, cloud->header.stamp);
-            } catch (tf2::TransformException& ex) {
-                std::string msg = std::string("Transform error for ground plane filter") +
-                    "You need to set the base_frame_id or disable filter_ground.";
-                RCLCPP_ERROR(this->get_logger(), "%s %", msg, ex.what());
-                return;
-            }
+        pcl::VoxelGrid<PCLPoint> sor;
+        sor.setInputCloud(pc.makeShared());
+        sor.setLeafSize (m_voxelLeafSize, m_voxelLeafSize, m_voxelLeafSize);
+        sor.filter(pc);
 
-            Eigen::Matrix4f sensorToBase =
-                pcl_ros::transformAsMatrix(sensorToBaseTf);
-            Eigen::Matrix4f baseToWorld = 
-                pcl_ros::transformAsMatrix(baseToWorldTf);
-
-            // transform pointcloud from sensor frame to fixed robot frame
-            pcl::transformPointCloud(pc, pc, sensorToBase);
-            pass_x.setInputCloud(pc.makeShared());
-            pass_x.filter(pc);
-            pass_y.setInputCloud(pc.makeShared());
-            pass_y.filter(pc);
-            pass_z.setInputCloud(pc.makeShared());
-            pass_z.filter(pc);
-            filterGroundPlane(pc, pc_ground, pc_nonground);
-
-            // transform clouds to world frame for insertion
-            pcl::transformPointCloud(pc_ground, pc_ground, baseToWorld);
-            pcl::transformPointCloud(pc_nonground, pc_nonground, baseToWorld);
-        } else {
-            // directly transform to map frame:
-            pcl::transformPointCloud(pc, pc, sensorToWorld);
-            
-            // just filter height range:
-            pass_x.setInputCloud(pc.makeShared());
-            pass_x.filter(pc);
-            pass_y.setInputCloud(pc.makeShared());
-            pass_y.filter(pc);
-            pass_z.setInputCloud(pc.makeShared());
-            pass_z.filter(pc);
-
-            pc_nonground = pc;
-            // pc_nonground is empty without ground segmentation
-            pc_ground.header = pc.header;
-            pc_nonground.header = pc.header;
-        }
+        pc_nonground = pc;
+        // pc_nonground is empty without ground segmentation
+        pc_ground.header = pc.header;
+        pc_nonground.header = pc.header;
         
         insertScan(sensorToWorldTf.transform.translation,
                    pc_ground, pc_nonground);
