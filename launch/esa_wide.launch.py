@@ -9,7 +9,7 @@ from launch.actions import DeclareLaunchArgument
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('input_cloud_topic', default_value='/points2'),
-        DeclareLaunchArgument('resolution', default_value='0.4'),
+        DeclareLaunchArgument('resolution', default_value='0.2'),
         DeclareLaunchArgument('frame_id', default_value='new_world'),
         DeclareLaunchArgument('base_frame_id', default_value='base_footprint'),
         DeclareLaunchArgument('height_map', default_value='False'),
@@ -38,13 +38,13 @@ def generate_launch_description():
         DeclareLaunchArgument('color_free/b', default_value='1.0'),
         DeclareLaunchArgument('color_free/a', default_value='1.0'),
         DeclareLaunchArgument('publish_free_space', default_value='False'),
-        DeclareLaunchArgument('pointcloud_min_x', default_value='-20.0'),
-        DeclareLaunchArgument('pointcloud_max_x', default_value='20.0'),
-        DeclareLaunchArgument('pointcloud_min_y', default_value='-20.0'),
-        DeclareLaunchArgument('pointcloud_max_y', default_value='20.0'),
-        DeclareLaunchArgument('pointcloud_min_z', default_value='-20.0'),
-        DeclareLaunchArgument('pointcloud_max_z', default_value='20.0'),
-        DeclareLaunchArgument('voxel_leaf_size', default_value='0.4'),
+        DeclareLaunchArgument('pointcloud_min_x', default_value='-80.0'),
+        DeclareLaunchArgument('pointcloud_max_x', default_value='80.0'),
+        DeclareLaunchArgument('pointcloud_min_y', default_value='-80.0'),
+        DeclareLaunchArgument('pointcloud_max_y', default_value='80.0'),
+        DeclareLaunchArgument('pointcloud_min_z', default_value='-50.0'),
+        DeclareLaunchArgument('pointcloud_max_z', default_value='50.0'),
+        DeclareLaunchArgument('voxel_leaf_size', default_value='0.2'),
 
         Node(
             package='octomap_server2',
