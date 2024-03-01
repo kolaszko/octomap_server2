@@ -291,7 +291,6 @@ namespace octomap_server {
 
         // temporary fix to match current rosbag
         auto fixed_frame = cloud->header.frame_id;
-        fixed_frame.erase(0, 1);
         
         Eigen::Matrix4f sensorToWorld;
         geometry_msgs::msg::TransformStamped sensorToWorldTf;
